@@ -1,4 +1,8 @@
-import { initializeApp } from 'firebase/app';
+import express from "express";
+import { createServer } from "http";
+import { Server } from "socket.io";
+import cors from "cors";
+import { initializeApp } from "firebase/app";
 import { getDatabase } from "firebase/database";
 
 const firebaseConfig = {
@@ -8,22 +12,18 @@ const firebaseConfig = {
   storageBucket: "unbored-e2c23.appspot.com",
   messagingSenderId: "1048076691746",
   appId: "1:1048076691746:web:ccdd64785df38f3c23dd7b",
-  databaseURL: "https://unbored-e2c23-default-rtdb.europe-west1.firebasedatabase.app",
+  databaseURL:
+    "https://unbored-e2c23-default-rtdb.europe-west1.firebasedatabase.app",
 };
 
 // Initialize Firebase
-const initializeapp = initializeApp(firebaseConfig);
+const appFirebase = initializeApp(firebaseConfig);
+const database = getDatabase(appFirebase);
 
-// Initialize Realtime Database and get a reference to the service
-const database = getDatabase(initializeapp);
+const app = express();
+const httpServer = createServer(app);
 
-const app = require("express")();
-const http = require("http").createServer(app);
-const cors = require("cors");
-const PORT = process.env.PORT || 5000;
-
-//Initialize new socket.io instance and pass the http server to it
-const io = require("socket.io")(http, {
+const io = new Server(httpServer, {
   cors: {
     origin: "http://localhost:5173",
     methods: ["GET", "POST"],
@@ -39,12 +39,11 @@ io.on("connection", (socket) => {
 
   socket.on("create", function (room) {
     socket.join(room);
-    console.log(socket.join(room));
+    console.log(`Room ${room} joined`);
   });
-  socket.on("sendMessage", (message) => {});
 
-  socket.on("connect", () => {
-    console.log("user connected");
+  socket.on("sendMessage", (message) => {
+    console.log("Message sent:", message);
   });
 
   socket.on("disconnect", () => {
@@ -56,6 +55,7 @@ app.get("/", (req, res) => {
   res.send("Server is up and running");
 });
 
-http.listen(PORT, () => {
-  console.log(`Listening to ${PORT}`);
+const PORT = process.env.PORT || 5000;
+httpServer.listen(PORT, () => {
+  console.log(`Listening on ${PORT}`);
 });
