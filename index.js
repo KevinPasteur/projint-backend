@@ -4,17 +4,20 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, set } from "firebase/database";
+import { getDatabase, ref, set, get } from "firebase/database";
+import dotenv from "dotenv";
+import bcrypt from "bcrypt";
+dotenv.config();
 
+console.log(process.env.VUE_APP_FIREBASE_DATABASE_URL);
 const firebaseConfig = {
-  apiKey: "AIzaSyDFzOgqAIICMGFvanomxjBXHcE3xWNkL94",
-  authDomain: "unbored-e2c23.firebaseapp.com",
-  projectId: "unbored-e2c23",
-  storageBucket: "unbored-e2c23.appspot.com",
-  messagingSenderId: "1048076691746",
-  appId: "1:1048076691746:web:ccdd64785df38f3c23dd7b",
-  databaseURL:
-    "https://unbored-e2c23-default-rtdb.europe-west1.firebasedatabase.app",
+  apiKey: process.env.VUE_APP_FIREBASE_API_KEY,
+  authDomain: process.env.VUE_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.VUE_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.VUE_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.VUE_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.VUE_APP_FIREBASE_APP_ID,
+  databaseURL: process.env.VUE_APP_FIREBASE_DATABASE_URL,
 };
 
 // Initialize Firebase
@@ -62,16 +65,84 @@ app.use(bodyParser.json());
 // Point de terminaison API pour créer un utilisateur
 app.post("/create-user", async (req, res) => {
   try {
-    const userData = req.body;
-    const userId = Date.now().toString(); // Utilisez l'ID utilisateur généré par Firebase Auth
+    // Check if the request body is missing or if essential fields are not provided
+    if (
+      !req.body ||
+      !req.body.pseudo ||
+      !req.body.prenom ||
+      !req.body.nom ||
+      !req.body.email ||
+      !req.body.motDePasse
+    ) {
+      return res.status(400).send({
+        message: "Missing required fields",
+      });
+    }
+
+    const { pseudo, prenom, nom, email, motDePasse } = req.body;
+
+    // Verify if name contains numbers
+    if (/\d/.test(nom)) {
+      return res.status(400).send({
+        message: "Name must not contain numbers",
+      });
+    }
+
+    // Verify if prenom contains numbers
+    if (/\d/.test(prenom)) {
+      return res.status(400).send({
+        message: "First name must not contain numbers",
+      });
+    }
+
+    // Verify password length
+    if (motDePasse.length < 8) {
+      return res.status(400).send({
+        message: "Password must be at least 8 characters long",
+      });
+    }
+
+    // Hash the password
+    const hashedPassword = await bcrypt.hash(motDePasse, 10);
+
+    // Check if pseudo or email already exists in the database
+    const usersRef = ref(database, `users`);
+    const usersSnapshot = await get(usersRef);
+    let pseudoExists = false;
+    let emailExists = false;
+
+    if (usersSnapshot.exists()) {
+      usersSnapshot.forEach((childSnapshot) => {
+        const user = childSnapshot.val();
+        if (user.pseudo === pseudo) pseudoExists = true;
+        if (user.email === email) emailExists = true;
+      });
+    }
+
+    if (pseudoExists) {
+      return res.status(400).send({
+        message: "Pseudo already exists",
+      });
+    }
+
+    if (emailExists) {
+      return res.status(400).send({
+        message: "Email already exists",
+      });
+    }
+
+    // Create user data with the hashed password
+    const userData = { ...req.body, motDePasse: hashedPassword };
+    const userId = Date.now().toString();
     await set(ref(database, `users/${userId}`), userData);
+
     res
       .status(200)
-      .send({ message: "Utilisateur créé avec succès", userId: userId });
+      .send({ message: "User created successfully", userId: userId });
   } catch (error) {
-    console.error("Erreur de création d'utilisateur", error);
+    console.error("Error creating user", error);
     res.status(500).send({
-      message: "Erreur lors de la création de l'utilisateur",
+      message: "Error creating the user",
       error: error.message,
     });
   }
