@@ -7,6 +7,7 @@ import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, get } from "firebase/database";
 import dotenv from "dotenv";
 import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 dotenv.config();
 
 console.log(process.env.VUE_APP_FIREBASE_DATABASE_URL);
@@ -61,7 +62,7 @@ app.get("/", (req, res) => {
 
 // Middleware pour analyser les corps de requête
 app.use(bodyParser.json());
-
+const secretKey = process.env.JWT_SECRET || "default_secret";
 // Point de terminaison API pour créer un utilisateur
 app.post("/create-user", async (req, res) => {
   try {
@@ -136,9 +137,13 @@ app.post("/create-user", async (req, res) => {
     const userId = Date.now().toString();
     await set(ref(database, `users/${userId}`), userData);
 
+    const token = jwt.sign({ uid: userId }, secretKey, {
+      expiresIn: "24h",
+    });
+
     res
-      .status(200)
-      .send({ message: "User created successfully", userId: userId });
+      .status(201)
+      .send({ token, message: "User created successfully", userId });
   } catch (error) {
     console.error("Error creating user", error);
     res.status(500).send({
@@ -146,6 +151,39 @@ app.post("/create-user", async (req, res) => {
       error: error.message,
     });
   }
+});
+
+app.post("/login", async (req, res) => {
+  const { email, motDePasse } = req.body;
+  const usersRef = ref(database, `users`);
+  const snapshot = await get(usersRef);
+  let userFound = null;
+
+  if (snapshot.exists()) {
+    snapshot.forEach((childSnapshot) => {
+      const user = childSnapshot.val();
+      if (user.email === email) {
+        userFound = user;
+      }
+    });
+  }
+
+  if (!userFound) {
+    return res.status(404).send({ message: "Utilisateur non trouvé" });
+  }
+
+  const passwordIsValid = await bcrypt.compare(
+    motDePasse,
+    userFound.motDePasse
+  );
+  if (!passwordIsValid) {
+    return res.status(401).send({ message: "Mot de passe incorrect" });
+  }
+
+  const token = jwt.sign({ uid: userFound.userId }, secretKey, {
+    expiresIn: "24h",
+  });
+  res.send({ token });
 });
 
 const PORT = process.env.PORT || 5000;
