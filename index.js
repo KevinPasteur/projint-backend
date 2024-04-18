@@ -4,11 +4,14 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, set, get } from "firebase/database";
+import { getDatabase, ref, set, get, update } from "firebase/database";
 import dotenv from "dotenv";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import generateMultipleCodes from "./utils.js";
 dotenv.config();
+
+const codes = generateMultipleCodes(50);
 
 console.log(process.env.VUE_APP_FIREBASE_DATABASE_URL);
 const firebaseConfig = {
@@ -24,6 +27,16 @@ const firebaseConfig = {
 // Initialize Firebase
 const appFirebase = initializeApp(firebaseConfig);
 const database = getDatabase(appFirebase);
+
+//saves the codes to the database
+function saveCodes(codes) {
+  const codesRef = ref(database, "codes");
+  codes.forEach((code) => {
+    set(ref(database, `codes/${code}`), { used: false });
+  });
+}
+
+saveCodes(codes);
 
 const app = express();
 const httpServer = createServer(app);
@@ -186,6 +199,20 @@ app.post("/login", async (req, res) => {
   res.send({ token });
 });
 
+app.post("/verify-code", async (req, res) => {
+  const { code } = req.body;
+  const codeRef = ref(database, `codes/${code}`);
+  const snapshot = await get(codeRef);
+
+  if (snapshot.exists() && !snapshot.val().used) {
+    // Code valide et pas encore utilisé
+    await update(codeRef, { used: true });
+    res.send({ message: "Code valide." });
+  } else {
+    // Code invalide ou déjà utilisé
+    res.status(400).send({ message: "Code invalide ou déjà utilisé." });
+  }
+});
 const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => {
   console.log(`Listening on ${PORT}`);
