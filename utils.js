@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config();
+import jwt from "jsonwebtoken";
 function generateCode() {
   const parts = [];
   for (let i = 0; i < 4; i++) {
@@ -7,10 +10,22 @@ function generateCode() {
   return parts.join("-");
 }
 
-export default function generateMultipleCodes(num) {
+export function generateMultipleCodes(num) {
   const codes = new Set();
   while (codes.size < num) {
     codes.add(generateCode());
   }
   return Array.from(codes);
+}
+
+export function authenticateToken(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+  if (token == null) return res.sendStatus(401);
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) return res.sendStatus(403);
+    req.user = user;
+    next();
+  });
 }

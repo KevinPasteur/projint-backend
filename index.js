@@ -8,7 +8,7 @@ import { getDatabase, ref, set, get, update } from "firebase/database";
 import dotenv from "dotenv";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import generateMultipleCodes from "./utils.js";
+import { generateMultipleCodes, authenticateToken } from "./utils.js";
 dotenv.config();
 
 const codes = generateMultipleCodes(50);
@@ -75,7 +75,7 @@ app.get("/", (req, res) => {
 
 // Middleware pour analyser les corps de requête
 app.use(bodyParser.json());
-const secretKey = process.env.JWT_SECRET || "default_secret";
+const secretKey = process.env.JWT_SECRET;
 // Point de terminaison API pour créer un utilisateur
 app.post("/create-user", async (req, res) => {
   try {
@@ -89,7 +89,8 @@ app.post("/create-user", async (req, res) => {
       !req.body.motDePasse
     ) {
       return res.status(400).send({
-        message: "Missing required fields",
+        message:
+          "Veuillez fournir un pseudo, un prénom, un nom, un email et un mot de passe",
       });
     }
 
@@ -98,21 +99,21 @@ app.post("/create-user", async (req, res) => {
     // Verify if name contains numbers
     if (/\d/.test(nom)) {
       return res.status(400).send({
-        message: "Name must not contain numbers",
+        message: "Le nom ne doit pas contenir de chiffres",
       });
     }
 
     // Verify if prenom contains numbers
     if (/\d/.test(prenom)) {
       return res.status(400).send({
-        message: "First name must not contain numbers",
+        message: "Le prénom ne doit pas contenir de chiffres",
       });
     }
 
     // Verify password length
     if (motDePasse.length < 8) {
       return res.status(400).send({
-        message: "Password must be at least 8 characters long",
+        message: "Le mot de passe doit contenir au moins 8 caractères",
       });
     }
 
@@ -135,13 +136,13 @@ app.post("/create-user", async (req, res) => {
 
     if (pseudoExists) {
       return res.status(400).send({
-        message: "Pseudo already exists",
+        message: "Ce pseudo est déjà utilisé",
       });
     }
 
     if (emailExists) {
       return res.status(400).send({
-        message: "Email already exists",
+        message: "Cette adresse email est déjà utilisée",
       });
     }
 
@@ -150,15 +151,13 @@ app.post("/create-user", async (req, res) => {
     const userId = Date.now().toString();
     await set(ref(database, `users/${userId}`), userData);
 
-    const token = jwt.sign({ uid: userId }, secretKey, {
-      expiresIn: "24h",
-    });
+    const token = jwt.sign({ uid: userId }, secretKey);
 
     res
       .status(201)
-      .send({ token, message: "User created successfully", userId });
+      .send({ token, message: "Ton compte a été crée avec succès", userId });
   } catch (error) {
-    console.error("Error creating user", error);
+    console.error("Il y a eu une erreur", error);
     res.status(500).send({
       message: "Error creating the user",
       error: error.message,
@@ -213,6 +212,16 @@ app.post("/verify-code", async (req, res) => {
     res.status(400).send({ message: "Code invalide ou déjà utilisé." });
   }
 });
+
+app.get("/boredRoom", authenticateToken, (req, res) => {
+  // Logique spécifique à cette route, après vérification de l'authenticité du token
+  res.json({ message: "Accès autorisé à la Bored Room" });
+});
+
+app.post("/validate-token", authenticateToken, (req, res) => {
+  res.status(200).send({ valid: true }); // Le token est valide
+});
+
 const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => {
   console.log(`Listening on ${PORT}`);
