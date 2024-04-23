@@ -263,9 +263,14 @@ app.post("/create-user", async (req, res) => {
       });
     }
 
-    // Create user data with the hashed password
-    const userData = { ...req.body, motDePasse: hashedPassword };
     const userId = Date.now().toString();
+
+    // Create user data with the hashed password
+    const userData = {
+      ...req.body,
+      motDePasse: hashedPassword,
+      userId: userId,
+    };
 
     const decoded = jwt.verify(tokenC, secretKey);
     const codeRef = ref(database, `codes/${decoded.code}`);
@@ -298,6 +303,12 @@ app.post("/login", async (req, res) => {
   const snapshot = await get(usersRef);
   let userFound = null;
 
+  const user = {
+    userId: "",
+    username: "",
+    email: "",
+  };
+
   if (snapshot.exists()) {
     snapshot.forEach((childSnapshot) => {
       const user = childSnapshot.val();
@@ -322,7 +333,12 @@ app.post("/login", async (req, res) => {
   const token = jwt.sign({ uid: userFound.userId }, secretKey, {
     expiresIn: "24h",
   });
-  res.send({ token });
+
+  user.username = userFound.pseudo;
+  user.email = userFound.email;
+  user.userId = userFound.userId;
+
+  res.send({ token, user });
 });
 
 app.get("/boredRoom", authenticateToken, (req, res) => {
