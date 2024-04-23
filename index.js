@@ -4,14 +4,12 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, set, get, update } from "firebase/database";
+import { getDatabase, ref, set, get, update, push } from "firebase/database";
 import dotenv from "dotenv";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { generateMultipleCodes, authenticateToken } from "./utils.js";
 dotenv.config();
-
-const codes = generateMultipleCodes(50);
 
 console.log(process.env.VUE_APP_FIREBASE_DATABASE_URL);
 const firebaseConfig = {
@@ -36,7 +34,8 @@ function saveCodes(codes) {
   });
 }
 
-saveCodes(codes);
+const codes = generateMultipleCodes(50);
+//saveCodes(codes);
 
 const app = express();
 const httpServer = createServer(app);
@@ -49,23 +48,122 @@ const io = new Server(httpServer, {
 });
 
 app.use(cors());
+const chatRooms = {};
 
 io.on("connection", (socket) => {
-  socket.on("login", ({ name, room }, callback) => {
-    console.log("a user connected");
+  console.log("Un utilisateur s'est connecté");
+
+  // Rejoindre une chat room
+  socket.on("joinRoom", ({ roomId }) => {
+    socket.join(roomId);
+    console.log(`Test a rejoint la room ${roomId}`);
+
+    // Envoyer l'historique des messages à l'utilisateur qui rejoint
+    if (chatRooms[roomId]) {
+      socket.emit("previousMessages", chatRooms[roomId].messages);
+    }
+
+    // Informer les autres utilisateurs de la room
+    socket.to(roomId).emit("userJoined", "Test");
+
+    socket.emit("roomJoined", { roomId }); // Envoyer le nom de la room au client
   });
 
-  socket.on("create", function (room) {
-    socket.join(room);
-    console.log(`Room ${room} joined`);
+  // Créer une chat room
+  socket.on("createRoom", async (room) => {
+    console.log(room.name);
+    const roomId = push(ref(database, "rooms")).key; // Générer un ID unique
+
+    const roomData = { roomId, ...room, messages: [] };
+
+    console.log(roomData);
+
+    chatRooms[roomId] = roomData;
+    console.log(chatRooms[roomId]);
+
+    await set(ref(database, `rooms/${roomId}`), roomData);
+    console.log(`Room ${roomData.name} créée avec l'ID ${roomId}`);
+
+    console.log("Room created", roomData);
+    console.log("Room id", roomId);
+    // Informer tous les utilisateurs de la nouvelle room
+    io.emit("roomCreated", roomId);
   });
 
-  socket.on("sendMessage", (message) => {
-    console.log("Message sent:", message);
+  socket.on("removeRoom", async (roomId) => {
+    // Supprimer la room de la base de données
+    await set(ref(database, `rooms/${roomId}`), null);
+
+    // Informer tous les utilisateurs de la room
+    io.emit("roomRemoved", roomId);
   });
 
+  // Envoyer un message
+  socket.on("sendMessage", async ({ roomId, message }) => {
+    //@ Olivier Graber - HEIG-VD 2024 #pOWEREDBy ChatGPT 4 To be or not te be
+    const roomsRef = ref(database, `rooms/${roomId}/roomId`);
+
+    const snapshot = await get(roomsRef);
+
+    if (snapshot.exists()) {
+      const timestamp = Date.now();
+      const messageData = { roomId, message, timestamp };
+
+      console.log(messageData);
+
+      // Stocker le message dans la base de données et en mémoire
+      push(ref(database, `rooms/${roomId}/messages`), messageData);
+
+      // Envoyer le message à tous les utilisateurs de la room
+      io.to(roomId).emit("newMessage", messageData);
+    }
+  });
+
+  socket.on("getMessages", async (roomId) => {
+    try {
+      const messagesRef = ref(database, `rooms/${roomId}/messages`);
+      const snapshot = await get(messagesRef);
+
+      if (snapshot.exists()) {
+        const messagesData = Object.values(snapshot.val());
+        socket.emit("previousMessages", messagesData);
+      } else {
+        // Handle the case where no messages exist
+        socket.emit("previousMessages", []); // Send an empty list
+      }
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+      // Handle error (e.g., send an error message to the client)
+    }
+  });
+
+  socket.on("getChatRooms", async () => {
+    try {
+      const chatRoomsRef = ref(database, "rooms");
+      const snapshot = await get(chatRoomsRef);
+
+      if (snapshot.exists()) {
+        const chatRoomsData = Object.values(snapshot.val()).map((room) => ({
+          id: room.roomId, // Assuming you store the key in the room data
+          name: room.name,
+          description: room.description,
+          createDate: room.createDate,
+          expiryDate: room.expiryDate,
+        }));
+        socket.emit("chatRoomsList", chatRoomsData);
+      } else {
+        // Handle the case where no chat rooms exist
+        socket.emit("chatRoomsList", []); // Send an empty list
+      }
+    } catch (error) {
+      console.error("Error fetching chat rooms:", error);
+      // Handle error (e.g., send an error message to the client)
+    }
+  });
+
+  // Déconnexion
   socket.on("disconnect", () => {
-    console.log("user disconnected");
+    console.log("Un utilisateur s'est déconnecté");
   });
 });
 
@@ -220,6 +318,26 @@ app.get("/boredRoom", authenticateToken, (req, res) => {
 
 app.post("/validate-token", authenticateToken, (req, res) => {
   res.status(200).send({ valid: true }); // Le token est valide
+});
+
+app.get("/rooms/:id", async (req, res) => {
+  try {
+    const roomId = req.params.id;
+
+    const roomRef = ref(database, `rooms/${roomId}/roomId`);
+    const snapshot = await get(roomRef);
+
+    if (snapshot.exists()) {
+      const roomData = snapshot.val();
+      res.send(roomData);
+    } else {
+      console.log("prout");
+      res.status(404).send({ message: "Room not found" });
+    }
+  } catch (error) {
+    console.error("Error retrieving room:", error);
+    res.status(500).send({ message: "Error retrieving room" });
+  }
 });
 
 const PORT = process.env.PORT || 5000;
