@@ -175,6 +175,25 @@ app.get("/", (req, res) => {
 app.use(bodyParser.json());
 const secretKey = process.env.JWT_SECRET;
 // Point de terminaison API pour créer un utilisateur
+
+app.post("/verify-code", async (req, res) => {
+  const { code } = req.body;
+  const codeRef = ref(database, `codes/${code}`);
+  const snapshot = await get(codeRef);
+
+  if (snapshot.exists() && !snapshot.val().used) {
+    //create a token
+
+    const tokenC = jwt.sign({ code }, secretKey, {
+      expiresIn: "24h",
+    });
+
+    res.send({ tokenC });
+  } else {
+    // Code invalide ou déjà utilisé
+    res.status(400).send({ message: "Code invalide ou déjà utilisé." });
+  }
+});
 app.post("/create-user", async (req, res) => {
   try {
     // Check if the request body is missing or if essential fields are not provided
@@ -192,7 +211,7 @@ app.post("/create-user", async (req, res) => {
       });
     }
 
-    const { pseudo, prenom, nom, email, motDePasse } = req.body;
+    const { pseudo, prenom, nom, email, motDePasse, tokenC } = req.body;
 
     // Verify if name contains numbers
     if (/\d/.test(nom)) {
@@ -247,7 +266,17 @@ app.post("/create-user", async (req, res) => {
     // Create user data with the hashed password
     const userData = { ...req.body, motDePasse: hashedPassword };
     const userId = Date.now().toString();
+
+    const decoded = jwt.verify(tokenC, secretKey);
+    const codeRef = ref(database, `codes/${decoded.code}`);
+    const snapshot = await get(codeRef);
+    if (!snapshot.exists() || snapshot.val().used) {
+      return res
+        .status(400)
+        .send({ message: "Code invalide ou déjà utilisé." });
+    }
     await set(ref(database, `users/${userId}`), userData);
+    await update(codeRef, { used: true });
 
     const token = jwt.sign({ uid: userId }, secretKey);
 
@@ -294,21 +323,6 @@ app.post("/login", async (req, res) => {
     expiresIn: "24h",
   });
   res.send({ token });
-});
-
-app.post("/verify-code", async (req, res) => {
-  const { code } = req.body;
-  const codeRef = ref(database, `codes/${code}`);
-  const snapshot = await get(codeRef);
-
-  if (snapshot.exists() && !snapshot.val().used) {
-    // Code valide et pas encore utilisé
-    await update(codeRef, { used: true });
-    res.send({ message: "Code valide." });
-  } else {
-    // Code invalide ou déjà utilisé
-    res.status(400).send({ message: "Code invalide ou déjà utilisé." });
-  }
 });
 
 app.get("/boredRoom", authenticateToken, (req, res) => {
