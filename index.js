@@ -35,8 +35,8 @@ function saveCodes(codes) {
     set(ref(database, `codes/${code}`), { used: false });
   });
 }
-
-saveCodes(codes);
+//uncomment to save codes to the database
+// saveCodes(codes);
 
 const app = express();
 const httpServer = createServer(app);
@@ -77,6 +77,27 @@ app.get("/", (req, res) => {
 app.use(bodyParser.json());
 const secretKey = process.env.JWT_SECRET;
 // Point de terminaison API pour créer un utilisateur
+
+app.post("/verify-code", async (req, res) => {
+  const { code } = req.body;
+  const codeRef = ref(database, `codes/${code}`);
+  const snapshot = await get(codeRef);
+
+  if (snapshot.exists() && !snapshot.val().used) {
+    // update the code to be used
+    await update(codeRef, { used: true });
+    //create a token
+
+    const tokenC = jwt.sign({ code }, secretKey, {
+      expiresIn: "24h",
+    });
+
+    res.send({ tokenC });
+  } else {
+    // Code invalide ou déjà utilisé
+    res.status(400).send({ message: "Code invalide ou déjà utilisé." });
+  }
+});
 app.post("/create-user", async (req, res) => {
   try {
     // Check if the request body is missing or if essential fields are not provided
@@ -198,27 +219,16 @@ app.post("/login", async (req, res) => {
   res.send({ token });
 });
 
-app.post("/verify-code", async (req, res) => {
-  const { code } = req.body;
-  const codeRef = ref(database, `codes/${code}`);
-  const snapshot = await get(codeRef);
-
-  if (snapshot.exists() && !snapshot.val().used) {
-    // Code valide et pas encore utilisé
-    await update(codeRef, { used: true });
-    res.send({ message: "Code valide." });
-  } else {
-    // Code invalide ou déjà utilisé
-    res.status(400).send({ message: "Code invalide ou déjà utilisé." });
-  }
-});
-
 app.get("/boredRoom", authenticateToken, (req, res) => {
   // Logique spécifique à cette route, après vérification de l'authenticité du token
   res.json({ message: "Accès autorisé à la Bored Room" });
 });
 
 app.post("/validate-token", authenticateToken, (req, res) => {
+  res.status(200).send({ valid: true }); // Le token est valide
+});
+
+app.post("/validate-tokenC", authenticateToken, (req, res) => {
   res.status(200).send({ valid: true }); // Le token est valide
 });
 
