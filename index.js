@@ -84,8 +84,6 @@ app.post("/verify-code", async (req, res) => {
   const snapshot = await get(codeRef);
 
   if (snapshot.exists() && !snapshot.val().used) {
-    // update the code to be used
-    await update(codeRef, { used: true });
     //create a token
 
     const tokenC = jwt.sign({ code }, secretKey, {
@@ -115,7 +113,7 @@ app.post("/create-user", async (req, res) => {
       });
     }
 
-    const { pseudo, prenom, nom, email, motDePasse } = req.body;
+    const { pseudo, prenom, nom, email, motDePasse, tokenC } = req.body;
 
     // Verify if name contains numbers
     if (/\d/.test(nom)) {
@@ -170,7 +168,17 @@ app.post("/create-user", async (req, res) => {
     // Create user data with the hashed password
     const userData = { ...req.body, motDePasse: hashedPassword };
     const userId = Date.now().toString();
+
+    const decoded = jwt.verify(tokenC, secretKey);
+    const codeRef = ref(database, `codes/${decoded.code}`);
+    const snapshot = await get(codeRef);
+    if (!snapshot.exists() || snapshot.val().used) {
+      return res
+        .status(400)
+        .send({ message: "Code invalide ou déjà utilisé." });
+    }
     await set(ref(database, `users/${userId}`), userData);
+    await update(codeRef, { used: true });
 
     const token = jwt.sign({ uid: userId }, secretKey);
 
@@ -225,10 +233,6 @@ app.get("/boredRoom", authenticateToken, (req, res) => {
 });
 
 app.post("/validate-token", authenticateToken, (req, res) => {
-  res.status(200).send({ valid: true }); // Le token est valide
-});
-
-app.post("/validate-tokenC", authenticateToken, (req, res) => {
   res.status(200).send({ valid: true }); // Le token est valide
 });
 
