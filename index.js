@@ -211,7 +211,8 @@ app.post("/create-user", async (req, res) => {
       });
     }
 
-    const { pseudo, prenom, nom, email, motDePasse, tokenC } = req.body;
+    const { pseudo, prenom, nom, email, motDePasse, tokenC, anonyme } =
+      req.body;
 
     // Verify if name contains numbers
     if (/\d/.test(nom)) {
@@ -242,6 +243,12 @@ app.post("/create-user", async (req, res) => {
     const usersSnapshot = await get(usersRef);
     let pseudoExists = false;
     let emailExists = false;
+
+    const userToReturn = {
+      userId: "",
+      username: "",
+      email: "",
+    };
 
     if (usersSnapshot.exists()) {
       usersSnapshot.forEach((childSnapshot) => {
@@ -285,9 +292,19 @@ app.post("/create-user", async (req, res) => {
 
     const token = jwt.sign({ uid: userId }, secretKey);
 
-    res
-      .status(201)
-      .send({ token, message: "Ton compte a été crée avec succès", userId });
+    if (anonyme) {
+      userToReturn.username = pseudo;
+    } else {
+      userToReturn.username = prenom + " " + nom;
+    }
+    userToReturn.email = email;
+    userToReturn.userId = userId;
+
+    res.status(201).send({
+      token,
+      message: "Ton compte a été crée avec succès",
+      userToReturn,
+    });
   } catch (error) {
     console.error("Il y a eu une erreur", error);
     res.status(500).send({
@@ -303,7 +320,7 @@ app.post("/login", async (req, res) => {
   const snapshot = await get(usersRef);
   let userFound = null;
 
-  const user = {
+  const userToReturn = {
     userId: "",
     username: "",
     email: "",
@@ -334,11 +351,16 @@ app.post("/login", async (req, res) => {
     expiresIn: "24h",
   });
 
-  user.username = userFound.pseudo;
-  user.email = userFound.email;
-  user.userId = userFound.userId;
+  if (userFound.anonyme) {
+    userToReturn.username = userFound.pseudo;
+  } else {
+    userToReturn.username = userFound.prenom + " " + userFound.nom;
+  }
 
-  res.send({ token, user });
+  userToReturn.email = userFound.email;
+  userToReturn.userId = userFound.userId;
+
+  res.send({ token, userToReturn });
 });
 
 app.get("/boredRoom", authenticateToken, (req, res) => {
@@ -361,7 +383,6 @@ app.get("/api/rooms/:id", async (req, res) => {
       const roomData = snapshot.val();
       res.send(roomData);
     } else {
-      console.log("prout");
       res.status(404).send({ message: "Room not found" });
     }
   } catch (error) {
