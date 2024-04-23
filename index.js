@@ -350,11 +350,11 @@ app.post("/validate-token", authenticateToken, (req, res) => {
   res.status(200).send({ valid: true }); // Le token est valide
 });
 
-app.get("/rooms/:id", async (req, res) => {
+app.get("/api/rooms/:id", async (req, res) => {
   try {
     const roomId = req.params.id;
 
-    const roomRef = ref(database, `rooms/${roomId}/roomId`);
+    const roomRef = ref(database, `rooms/${roomId}`);
     const snapshot = await get(roomRef);
 
     if (snapshot.exists()) {
