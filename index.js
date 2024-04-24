@@ -36,7 +36,7 @@ function saveCodes(codes) {
   });
 }
 
-saveCodes(codes);
+// saveCodes(codes);
 
 const app = express();
 const httpServer = createServer(app);
