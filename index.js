@@ -4,7 +4,15 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, set, get, update, push } from "firebase/database";
+import {
+  getDatabase,
+  ref,
+  set,
+  get,
+  update,
+  push,
+  increment,
+} from "firebase/database";
 import dotenv from "dotenv";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -58,10 +66,14 @@ io.on("connection", (socket) => {
     socket.join(roomId);
     console.log(`Test a rejoint la room ${roomId}`);
 
+    update(ref(database, `rooms/${roomId}`), {
+      currentUsers: increment(1),
+    });
+
     // Envoyer l'historique des messages à l'utilisateur qui rejoint
-    if (chatRooms[roomId]) {
+    /*if (chatRooms[roomId]) {
       socket.emit("previousMessages", chatRooms[roomId].messages);
-    }
+    }*/
 
     // Informer les autres utilisateurs de la room
     socket.to(roomId).emit("userJoined", "Test");
@@ -74,7 +86,7 @@ io.on("connection", (socket) => {
     console.log(room.name);
     const roomId = push(ref(database, "rooms")).key; // Générer un ID unique
 
-    const roomData = { roomId, ...room, messages: [] };
+    const roomData = { roomId, ...room, messages: [], currentUsers: 0 };
 
     console.log(roomData);
 
@@ -388,6 +400,23 @@ app.get("/api/rooms/:id", async (req, res) => {
   } catch (error) {
     console.error("Error retrieving room:", error);
     res.status(500).send({ message: "Error retrieving room" });
+  }
+});
+
+app.get("/api/rooms", async (req, res) => {
+  try {
+    const roomRef = ref(database, `rooms`);
+    const snapshot = await get(roomRef);
+
+    if (snapshot.exists()) {
+      const roomData = snapshot.val();
+      res.send(roomData);
+    } else {
+      res.status(404).send({ message: "Rooms not found" });
+    }
+  } catch (error) {
+    console.error("Error retrieving rooms:", error);
+    res.status(500).send({ message: "Error retrieving rooms" });
   }
 });
 
