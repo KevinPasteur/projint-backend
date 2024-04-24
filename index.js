@@ -19,7 +19,6 @@ import jwt from "jsonwebtoken";
 import { generateMultipleCodes, authenticateToken } from "./utils.js";
 dotenv.config();
 
-console.log(process.env.VUE_APP_FIREBASE_DATABASE_URL);
 const firebaseConfig = {
   apiKey: process.env.VUE_APP_FIREBASE_API_KEY,
   authDomain: process.env.VUE_APP_FIREBASE_AUTH_DOMAIN,
