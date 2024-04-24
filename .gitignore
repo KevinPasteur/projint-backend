@@ -142,6 +142,6 @@ dist
 .svelte-kit
 
 # Remove .vscode from the project
-.vscode/settings.json
+.vscode/*
 
 # End of https://www.toptal.com/developers/gitignore/api/node
