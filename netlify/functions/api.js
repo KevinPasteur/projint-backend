@@ -16,7 +16,7 @@ import {
 import dotenv from "dotenv";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { generateMultipleCodes, authenticateToken } from "./utils.js";
+import { generateMultipleCodes, authenticateToken } from "../../utils.js";
 dotenv.config();
 
 const firebaseConfig = {
